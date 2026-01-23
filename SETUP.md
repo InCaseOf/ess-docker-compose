@@ -194,42 +194,76 @@ grep "CHANGE_ME" .env
 
 **Expected output:** Nothing (no output means all placeholders are filled)
 
-## Step 4: Configure Synapse
+## Step 4: Generate Synapse Configuration
 
-### 4a. Create config directory and copy template
+### 4a. Generate base configuration using official Synapse tool
 
-```bash
-mkdir -p synapse/config
-cp templates/homeserver.yaml synapse/config/homeserver.yaml
-```
-
-### 4b. Replace placeholders
-
-Open the file:
+Run the official Synapse configuration generator:
 
 ```bash
-nano synapse/config/homeserver.yaml
+docker run -it --rm \
+    -v "./synapse/data:/data" \
+    -e SYNAPSE_SERVER_NAME=matrix.example.com \
+    -e SYNAPSE_REPORT_STATS=no \
+    matrixdotorg/synapse:latest generate
 ```
 
-Find and replace these placeholders:
+**IMPORTANT:** Replace `matrix.example.com` with your actual Matrix domain from Step 3.
 
-| Placeholder | Replace With | Notes |
-|-------------|--------------|-------|
-| `{{MATRIX_DOMAIN}}` | `matrix.example.com` | Your Matrix domain |
-| `{{POSTGRES_PASSWORD}}` | Your DB password | **MUST match .env** |
-| `{{SYNAPSE_REGISTRATION_SHARED_SECRET}}` | Your registration secret | From Step 2b |
+**Expected output:**
+```
+Generating config file /data/homeserver.yaml
+Generating signing key file /data/matrix.example.com.signing.key
+A config file has been generated in '/data/homeserver.yaml'
+```
 
-Save and exit.
+This command:
+- Generates a complete, valid `homeserver.yaml`
+- Creates necessary signing keys
+- Sets correct file permissions for the Synapse container
+
+**✓ Verify:** Check the config was created:
+
+```bash
+ls -la synapse/data/homeserver.yaml
+```
+
+**Expected output:** File exists (owned by UID 991)
+
+### 4b. Update database configuration
+
+Now edit the generated config to use PostgreSQL instead of SQLite:
+
+```bash
+nano synapse/data/homeserver.yaml
+```
+
+Find the `database:` section and **replace the entire section** with:
+
+```yaml
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: YOUR_POSTGRES_PASSWORD_FROM_STEP_2a
+    database: synapse
+    host: postgres
+    port: 5432
+    cp_min: 5
+    cp_max: 10
+```
 
 **⚠️ CRITICAL:** The database password here MUST exactly match what you put in `.env`!
 
-**✓ Verify:** Check no placeholders remain:
+Save and exit (`Ctrl+X`, then `Y`, then `Enter` in nano).
+
+**✓ Verify:** Check database config is correct:
 
 ```bash
-grep "{{" synapse/config/homeserver.yaml
+grep "name: psycopg2" synapse/data/homeserver.yaml
 ```
 
-**Expected output:** Nothing (no matches)
+**Expected output:** Should show the psycopg2 line you added
 
 ## Step 5: Configure MAS (Matrix Authentication Service)
 
@@ -319,7 +353,7 @@ grep "{{" element/config/config.json
 
 You should now have:
 - [ ] `.env` configured with all secrets
-- [ ] `synapse/config/homeserver.yaml` configured
+- [ ] `synapse/data/homeserver.yaml` generated and configured
 - [ ] `mas/config/config.yaml` configured
 - [ ] `element/config/config.json` configured
 - [ ] No `{{placeholders}}` remain in any file
@@ -445,8 +479,10 @@ You should now have:
 
 ### 9a. Create data directories
 
+**Note:** The `synapse/data` directory was already created in Step 4 by the generate command.
+
 ```bash
-mkdir -p synapse/data mas/data element-admin/data postgres/data
+mkdir -p mas/data element-admin/data postgres/data
 ```
 
 **✓ Verify:**
@@ -455,7 +491,7 @@ mkdir -p synapse/data mas/data element-admin/data postgres/data
 ls -la | grep -E "synapse|mas|element-admin|postgres"
 ```
 
-You should see all four directories.
+You should see all four directories (synapse/data already exists from Step 4).
 
 ### 9b. Start PostgreSQL first
 
@@ -781,7 +817,7 @@ curl https://matrix.example.com/_matrix/client/versions
 2. Verify password matches in all configs:
    ```bash
    grep POSTGRES_PASSWORD .env
-   grep "password:" synapse/config/homeserver.yaml
+   grep "password:" synapse/data/homeserver.yaml
    grep "postgresql://" mas/config/config.yaml
    ```
 
@@ -958,7 +994,6 @@ tar -czf matrix-backup-$(date +%Y%m%d).tar.gz \
   synapse/data \
   mas/data \
   .env \
-  synapse/config \
   mas/config \
   element/config
 
@@ -1056,7 +1091,7 @@ docker compose exec postgres psql -U synapse -c "VACUUM ANALYZE;"
 
 2. Update password in `.env`
 
-3. Update password in `synapse/config/homeserver.yaml`
+3. Update password in `synapse/data/homeserver.yaml`
 
 4. Update password in `mas/config/config.yaml`
 
