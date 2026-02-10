@@ -9,12 +9,15 @@ A complete, production-ready Matrix server stack with modern authentication and 
 - **Element Web** - Web client interface
 - **Element Admin** - Admin dashboard
 - **PostgreSQL** - Database backend
-- **Caddy** - Reverse proxy with automatic HTTPS
+- **LiveKit** - SFU for Element Call
+- **Element Call** - Next-generation video calling
 
 ## Features
 
 - Clean template-based configuration
-- Optional upstream OIDC integration (Authelia, Keycloak, etc.)
+- Upstream OIDC integration (Authentik, Authelia, etc.)
+- Custom Synapse plugins support via Dockerfile
+- Native Element Call support (group video calls)
 - Separate or combined deployment options
 - Comprehensive documentation
 - Production-ready security defaults
@@ -50,7 +53,7 @@ A complete, production-ready Matrix server stack with modern authentication and 
 ```
 Internet (HTTPS)
     ↓
-Caddy Reverse Proxy
+Reverse Proxy (e.g. SWAG)
     ↓
 ┌─────────────────────────────────────────┐
 │  Matrix Stack                           │
@@ -78,7 +81,7 @@ Caddy Reverse Proxy
 - Simpler setup, fewer dependencies
 
 ### With Upstream OIDC (Optional)
-- Integrate with existing identity providers (Authelia, Keycloak, etc.)
+- Integrate with existing identity providers (Authentik, Authelia, etc.)
 - Centralized authentication across services
 - Single Sign-On (SSO) support
 
@@ -93,20 +96,13 @@ The `templates/` directory contains:
 - `homeserver.yaml` - Synapse configuration
 - `mas-config.yaml` - MAS configuration with optional OIDC
 - `element-config.json` - Element Web client configuration
-- `Caddyfile` - Reverse proxy configuration
-- `authelia-client.yml` - Example OIDC client config for Authelia
 
 All templates use `{{PLACEHOLDER}}` format for easy find-and-replace.
 
 ## Deployment Scenarios
 
 ### Single Server
-Run everything (Matrix + Caddy) on one machine.
-
-### Multi-Server
-- Matrix stack on dedicated server
-- Caddy reverse proxy on separate edge server
-- Optional: Authelia on separate authentication server
+Run the Matrix stack on one machine, behind a reverse proxy like SWAG.
 
 See [SETUP.md](SETUP.md) Step 7 for details.
 
@@ -114,7 +110,7 @@ See [SETUP.md](SETUP.md) Step 7 for details.
 
 - Docker and Docker Compose
 - Domain name with DNS configured
-- Ports 80, 443 accessible (for HTTPS/certificates)
+- [ ] Ports 80, 443, 7880, 7881, 7882 accessible
 
 ## Common Operations
 
@@ -138,7 +134,7 @@ docker compose up -d
 
 ## Security
 
-- HTTPS enforced via Caddy with automatic Let's Encrypt certificates
+- HTTPS should be enforced via your reverse proxy (e.g. SWAG)
 - Strong secret generation required (see SETUP.md Step 2)
 - Database passwords must be synchronized across configs
 - Admin interface access should be restricted by IP

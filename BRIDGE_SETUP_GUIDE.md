@@ -66,12 +66,12 @@ Remove any existing bridge registration references:
 #   - /bridges/signal/config/registration.yaml
 
 # Restart Synapse
-sudo docker compose -f docker-compose.local.yml restart synapse
+sudo docker compose restart synapse
 ```
 
 ### Step 2: Temporarily Remove Dependencies
 
-Edit `docker-compose.local.yml` and remove `depends_on: synapse` from bridges:
+Edit `docker-compose.yml` and remove `depends_on: synapse` from bridges:
 
 ```yaml
 mautrix-telegram:
@@ -86,13 +86,13 @@ mautrix-telegram:
 
 ```bash
 # Start each bridge independently
-sudo docker compose -f docker-compose.local.yml up -d mautrix-telegram
+sudo docker compose up -d mautrix-telegram
 sleep 15  # Wait for config generation
 
-sudo docker compose -f docker-compose.local.yml up -d mautrix-whatsapp
+sudo docker compose up -d mautrix-whatsapp
 sleep 15
 
-sudo docker compose -f docker-compose.local.yml up -d mautrix-signal
+sudo docker compose up -d mautrix-signal
 sleep 15
 ```
 
@@ -104,7 +104,7 @@ For each bridge, edit the config file:
 ```yaml
 homeserver:
   address: http://synapse:8008
-  domain: matrix.example.test
+  domain: matrix.example.com
 
 appservice:
   address: http://mautrix-telegram:29317
@@ -125,7 +125,7 @@ bridge:
 ```yaml
 homeserver:
   address: http://synapse:8008
-  domain: matrix.example.test  # Make sure this line has a value!
+  domain: matrix.example.com  # Make sure this line has a value!
 
 appservice:
   address: http://mautrix-whatsapp:29318
@@ -148,7 +148,7 @@ bridge:
 ```yaml
 homeserver:
   address: http://synapse:8008
-  domain: matrix.example.test
+  domain: matrix.example.com
 
 appservice:
   address: http://mautrix-signal:29319
@@ -180,7 +180,7 @@ sudo docker exec matrix-postgres psql -U synapse -c "CREATE DATABASE signal;"
 ### Step 6: Restart Bridges
 
 ```bash
-sudo docker compose -f docker-compose.local.yml restart mautrix-telegram mautrix-whatsapp mautrix-signal
+sudo docker compose restart mautrix-telegram mautrix-whatsapp mautrix-signal
 sleep 20
 ```
 
@@ -208,7 +208,7 @@ app_service_config_files:
   - /bridges/signal/config/registration.yaml
 ```
 
-Ensure bridge directory is mounted in `docker-compose.local.yml`:
+Ensure bridge directory is mounted in `docker-compose.yml`:
 
 ```yaml
 synapse:
@@ -221,11 +221,11 @@ synapse:
 
 ```bash
 # Recreate Synapse with new volume mount
-sudo docker compose -f docker-compose.local.yml up -d synapse
+sudo docker compose up -d synapse
 
-# Restore dependencies in docker-compose.local.yml
+# Restore dependencies in docker-compose.yml
 # Then restart bridges
-sudo docker compose -f docker-compose.local.yml restart mautrix-telegram mautrix-whatsapp mautrix-signal
+sudo docker compose restart mautrix-telegram mautrix-whatsapp mautrix-signal
 ```
 
 ## Verification
@@ -273,11 +273,11 @@ INFO - Listening on port 29318
 
 Once bridges are running:
 
-1. Open Element Web: `https://element.example.test`
+1. Open Element Web: `https://element.example.com`
 2. Start a chat with the bridge bot:
-   - Telegram: `@telegrambot:matrix.example.test`
-   - WhatsApp: `@whatsappbot:matrix.example.test`
-   - Signal: `@signalbot:matrix.example.test`
+   - Telegram: `@telegrambot:matrix.example.com`
+   - WhatsApp: `@whatsappbot:matrix.example.com`
+   - Signal: `@signalbot:matrix.example.com`
 3. Follow the bot's instructions to link your account
 
 ### Telegram Bridge

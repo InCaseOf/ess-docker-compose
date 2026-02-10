@@ -53,8 +53,20 @@ matrix_authentication_service:
   # Shared secret - MUST match `matrix.secret` in MAS config
   secret: "ThisTokenIsStaticallyConfiguredAndShouldNotBeUsedInProduction"
 
+# Call SFU configuration for Element Call
+call_sfu:
+  enabled: true
+  # The URL where LiveKit can be reached by clients
+  url: "https://{{LIVEKIT_DOMAIN}}"
+  # LiveKit API Key and Secret
+  api_key: "{{LIVEKIT_API_KEY}}"
+  api_secret: "{{LIVEKIT_API_SECRET}}"
+
 # Experimental features
 experimental_features:
+  # Enable MSC3401 (Element Call) support
+  msc3401_enabled: true
+
   # Enable QR code login (requires Synapse 1.106+)
   # Transfers crypto identity without needing password/passphrase
   msc4108_enabled: true

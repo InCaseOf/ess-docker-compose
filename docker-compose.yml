@@ -38,7 +38,8 @@ services:
 
   # Matrix Synapse Server
   synapse:
-    image: matrixdotorg/synapse:latest
+    build: ./synapse
+    image: matrix-synapse-custom
     container_name: matrix-synapse
     restart: unless-stopped
     environment:
@@ -198,30 +199,32 @@ services:
       redis:
         condition: service_healthy
 
-  # Caddy Reverse Proxy (HTTPS termination with Let's Encrypt)
-  # For multi-machine deployments: Don't use this profile (Caddy runs separately)
-  # For single-machine deployments: Use --profile single-machine
-  caddy:
-    profiles:
-      - single-machine  # Only started for single-machine deployments
-    image: caddy:2-alpine
-    container_name: matrix-caddy
+  # LiveKit SFU for Element Call
+  livekit:
+    image: livekit/livekit:latest
+    container_name: matrix-livekit
     restart: unless-stopped
-    ports:
-      - "443:443"
-      - "80:80"
-      - "2019:2019"  # Admin API
+    command: --config /etc/livekit.yaml
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/data:/data
-      - ./caddy/config:/config
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
     networks:
       - matrix-network
-    depends_on:
-      - synapse
-      - element
-      - mas
-      # Note: Authelia dependency removed - works with or without Authelia
+
+  # Element Call web application
+  element-call:
+    image: ghcr.io/element-hq/element-call:latest
+    container_name: matrix-element-call
+    restart: unless-stopped
+    volumes:
+      - ./element-call/config/config.json:/app/config.json:ro
+    ports:
+      - "8083:80"
+    networks:
+      - matrix-network
 
 networks:
   matrix-network:

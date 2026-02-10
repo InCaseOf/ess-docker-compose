@@ -116,21 +116,21 @@ account:
 #     # Provider ID - used in URLs and internal references
 #     - id: "01J9XYGF0F3H4M5T6P8Q2V9W7Z"
 #       # Human-readable name shown to users
-#       display_name: "Sign in with Authelia"
+#       display_name: "Sign in with Authentik"
 #       # Brand ID for styling (optional)
-#       # brand_id: "authelia"
+#       brand_id: "authentik"
 #       # Issuer URL - must match your OIDC provider's issuer
-#       issuer: "{{AUTHELIA_URL}}"
+#       issuer: "{{OIDC_ISSUER_URL}}"
 #       # Authorization endpoint (usually auto-discovered)
-#       # authorization_endpoint: "{{AUTHELIA_URL}}/api/oidc/authorization"
+#       # authorization_endpoint: "{{OIDC_ISSUER_URL}}/api/oidc/authorization"
 #       # Token endpoint (usually auto-discovered)
-#       # token_endpoint: "{{AUTHELIA_URL}}/api/oidc/token"
+#       # token_endpoint: "{{OIDC_ISSUER_URL}}/api/oidc/token"
 #       # JWKS URI (usually auto-discovered)
-#       # jwks_uri: "{{AUTHELIA_URL}}/jwks.json"
-#       # Client ID - must match the client configured in Authelia
-#       client_id: "{{AUTHELIA_CLIENT_ID}}"
-#       # Client secret - must match the secret configured in Authelia
-#       client_secret: "{{AUTHELIA_CLIENT_SECRET}}"
+#       # jwks_uri: "{{OIDC_ISSUER_URL}}/jwks.json"
+#       # Client ID - must match the client configured in your provider
+#       client_id: "{{OIDC_CLIENT_ID}}"
+#       # Client secret - must match the secret configured in your provider
+#       client_secret: "{{OIDC_CLIENT_SECRET}}"
 #       # Client authentication method
 #       token_endpoint_auth_method: "client_secret_post"
 #       # Signing algorithm
@@ -173,11 +173,11 @@ account:
 #    section in homeserver.yaml (Synapse 1.136+)
 #    Old msc3861 OIDC client is no longer needed with stable config
 #
-# 4. If using upstream OAuth (Authelia):
+# 4. If using upstream OAuth (Authentik/Authelia):
 #    - Uncomment the entire upstream_oauth2 section
-#    - Replace all {{AUTHELIA_*}} placeholders
-#    - Ensure redirect URI in Authelia is: https://{{MATRIX_DOMAIN}}/oauth2/callback
-#    - Client secret in Authelia must be hashed with pbkdf2
+#    - Replace all {{OIDC_*}} placeholders
+#    - Ensure redirect URI in your provider is: https://{{AUTH_DOMAIN}}/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ
+#    - Client secret in Authentik/Authelia should be the plaintext version of the secret
 #
 # 5. The provider ID in upstream_oauth2 can be any unique string
 #    We use a ULID format for uniqueness, but any string works

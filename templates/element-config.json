@@ -45,7 +45,11 @@
     "feature_report_to_moderators": true,
     "feature_html_topic": true,
     "feature_thread": true,
-    "feature_element_call_video_rooms": false
+    "feature_element_call_video_rooms": true,
+    "feature_group_calls": true
+  },
+  "element_call": {
+    "url": "https://{{ELEMENT_CALL_DOMAIN}}"
   },
   "permalink_prefix": "https://{{ELEMENT_DOMAIN}}",
   "disable_guests": true,

@@ -9,8 +9,9 @@ A step-by-step guide to deploying a complete Matrix stack with checkpoints and v
 - **Element Web** - Web client
 - **Element Admin** - Admin interface
 - **PostgreSQL** - Database backend
-- **Caddy** - Reverse proxy (separate server)
-- **Authelia** - Optional upstream OIDC provider
+- **LiveKit** - SFU for Element Call
+- **Element Call** - Video calling web app
+- **Authentik/Authelia** - Optional upstream OIDC provider
 
 ## Setup Roadmap
 
@@ -22,14 +23,14 @@ Phase 1: Preparation
 
 Phase 2: Configuration
 ├─ Environment variables
-├─ Synapse config
-├─ MAS config
+├─ Synapse config (and Plugins)
+├─ MAS config (Authentik/Authelia)
 ├─ Element config
 └─ ✓ Checkpoint: All configs prepared
 
-Phase 3: Reverse Proxy
-├─ Caddy setup
-├─ Optional: Authelia OIDC
+Phase 3: External Reverse Proxy
+├─ SWAG / Nginx / Traefik setup
+├─ Upstream OIDC (Authentik/Authelia)
 └─ ✓ Checkpoint: Proxy ready
 
 Phase 4: Deployment
@@ -54,17 +55,19 @@ Before starting, ensure you have:
 - [ ] DNS configured:
   - `matrix.example.com` → Your server IP
   - `element.example.com` → Your server IP (or reverse proxy IP)
-- [ ] If using Authelia: separate Authelia server at `auth.example.com`
+  - `call.example.com` → Your server IP
+  - `livekit.example.com` → Your server IP
+- [ ] If using Authentik/Authelia: separate server at `auth.example.com`
 - [ ] Terminal access to your server
 
 ### Architecture Overview
 
 ```
-User → Caddy (reverse proxy) → Synapse/MAS/Element
+User → SWAG (reverse proxy) → Synapse/MAS/Element/Element-Call/LiveKit
                                     ↓
                               PostgreSQL
                                     ↓
-                          Authelia (optional)
+                        Authentik/Authelia (optional)
 ```
 
 ---
@@ -121,7 +124,18 @@ openssl rand -hex 32
 
 Save this as: `MAS_SECRETS_ENCRYPTION`
 
-### 2d. MAS Signing Key (MAS v1.8.0+)
+### 2d. LiveKit Secrets
+
+```bash
+# API Key
+openssl rand -hex 16
+# API Secret
+openssl rand -base64 32 | tr -d "=+/"
+```
+
+Save as: `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`.
+
+### 2e. MAS Signing Key (MAS v1.8.0+)
 
 **Note:** MAS v1.8.0+ requires EC private keys instead of hex strings. This key will be pasted directly into the MAS config file (not stored as an environment variable).
 
@@ -141,7 +155,7 @@ You will paste this entire output (including BEGIN/END lines) into `mas/config/c
 
 **Reference:** [MAS Signing Keys Documentation](https://element-hq.github.io/matrix-authentication-service/reference/configuration.html#signing-keys)
 
-### 2e. OIDC Client Secret (Optional - only if using Authelia)
+### 2f. OIDC Client Secret (Optional - only if using Authentik/Authelia)
 
 ```bash
 openssl rand -base64 32 | tr -d "=+/"
@@ -149,14 +163,14 @@ openssl rand -base64 32 | tr -d "=+/"
 
 **Expected output:** A long base64 string
 
-Save this as: `AUTHELIA_CLIENT_SECRET`
+Save this as: `OIDC_CLIENT_SECRET`
 
 ### ✓ Checkpoint: Preparation Complete
 
 You should now have:
 - [ ] Repository cloned
 - [ ] `.env` file created
-- [ ] 4-5 secrets generated and saved
+- [ ] 5-6 secrets generated and saved
 - [ ] Secrets are in a secure location (password manager recommended)
 
 ---
@@ -180,7 +194,9 @@ Fill in these values (copy from your saved secrets):
 | `POSTGRES_PASSWORD` | From Step 2a | ____________ |
 | `SYNAPSE_REGISTRATION_SHARED_SECRET` | From Step 2b | ____________ |
 | `MAS_SECRETS_ENCRYPTION` | From Step 2c (64 hex) | ____________ |
-| `AUTHELIA_CLIENT_SECRET` | From Step 2e (optional) | ____________ |
+| `LIVEKIT_API_KEY` | From Step 2d | ____________ |
+| `LIVEKIT_API_SECRET` | From Step 2d | ____________ |
+| `OIDC_CLIENT_SECRET` | From Step 2f (optional) | ____________ |
 
 **Note:** The MAS signing key from Step 2d is not stored in `.env` - you'll paste it directly into `mas/config/config.yaml` in Step 4.
 
@@ -194,9 +210,19 @@ grep "CHANGE_ME" .env
 
 **Expected output:** Nothing (no output means all placeholders are filled)
 
-## Step 4: Generate Synapse Configuration
+## Step 4: Configure Synapse and Plugins
 
-### 4a. Generate base configuration using official Synapse tool
+### 4a. Plugins (Optional)
+
+If you want to add Synapse plugins, add them to `synapse/requirements.txt`:
+
+```bash
+echo "matrix-synapse-rest-password-provider" >> synapse/requirements.txt
+```
+
+The stack will automatically build a custom Synapse image with these plugins installed.
+
+### 4b. Generate base configuration using official Synapse tool
 
 Run the official Synapse configuration generator:
 
@@ -230,15 +256,15 @@ ls -la synapse/data/homeserver.yaml
 
 **Expected output:** File exists (owned by UID 991)
 
-### 4b. Update database configuration
+### 4c. Update database and Call SFU configuration
 
-Now edit the generated config to use PostgreSQL instead of SQLite:
+Now edit the generated config to use PostgreSQL and LiveKit:
 
 ```bash
 nano synapse/data/homeserver.yaml
 ```
 
-Find the `database:` section and **replace the entire section** with:
+1. Find the `database:` section and **replace the entire section** with:
 
 ```yaml
 database:
@@ -254,6 +280,19 @@ database:
 ```
 
 **⚠️ CRITICAL:** The database password here MUST exactly match what you put in `.env`!
+
+2. Find the `call_sfu:` section (or add it) and configure your LiveKit server:
+
+```yaml
+call_sfu:
+  enabled: true
+  url: "https://livekit.example.com"
+  api_key: "YOUR_LIVEKIT_API_KEY"
+  api_secret: "YOUR_LIVEKIT_API_SECRET"
+
+experimental_features:
+  msc3401_enabled: true
+```
 
 Save and exit (`Ctrl+X`, then `Y`, then `Enter` in nano).
 
@@ -289,19 +328,19 @@ Replace these placeholders:
 | `{{MATRIX_DOMAIN}}` | `matrix.example.com` |
 | `{{POSTGRES_PASSWORD}}` | Your DB password (**must match**) |
 | `{{MAS_SECRETS_ENCRYPTION}}` | Your 64-char hex from Step 2c |
-| `{{MAS_EC_PRIVATE_KEY}}` | The EC key content from Step 2d (between the BEGIN/END lines, without the header/footer) |
+| `{{MAS_EC_PRIVATE_KEY}}` | The EC key content from Step 2e (between the BEGIN/END lines, without the header/footer) |
 
-**If using Authelia:**
+**If using Authentik/Authelia:**
 
 | Placeholder | Replace With |
 |-------------|--------------|
-| `{{AUTHELIA_URL}}` | `https://auth.example.com` |
-| `{{AUTHELIA_CLIENT_ID}}` | `matrix_mas` (or your choice) |
-| `{{AUTHELIA_CLIENT_SECRET}}` | From Step 2e |
+| `{{OIDC_ISSUER_URL}}` | `https://auth.example.com` |
+| `{{OIDC_CLIENT_ID}}` | `matrix_mas` (or your choice) |
+| `{{OIDC_CLIENT_SECRET}}` | From Step 2f |
 
 Uncomment the `upstream_oauth2` section.
 
-**If NOT using Authelia:**
+**If NOT using Upstream OIDC:**
 
 Find the `upstream_oauth2` section and comment it out or delete it entirely.
 
@@ -361,93 +400,45 @@ You should now have:
 
 ---
 
-# Phase 3: Reverse Proxy Setup
+# Phase 3: External Reverse Proxy Setup
 
-## Step 7: Configure Caddy
+## Step 7: Configure SWAG (or other Proxy)
 
-### Option A: Caddy on Same Server
+Since you are using SWAG in a separate docker-compose, you need to point it to your Matrix services.
 
-```bash
-mkdir -p caddy
-cp templates/Caddyfile caddy/Caddyfile
-nano caddy/Caddyfile
-```
+### SWAG Configuration
 
-Replace:
-- `{{MATRIX_DOMAIN}}` → `matrix.example.com`
-- `{{ELEMENT_DOMAIN}}` → `element.example.com`
-- Update email in global options (line 4)
+1. In your SWAG `proxy-confs` directory, create or edit `matrix.subdomain.conf`, `element.subdomain.conf`, `call.subdomain.conf`, and `livekit.subdomain.conf`.
+2. Point them to your Matrix server's IP and the following ports:
+   - **Synapse:** 8008
+   - **MAS:** 8080
+   - **Element Web:** 8082
+   - **Element Admin:** 8081
+   - **Element Call:** 8083
+   - **LiveKit:** 7880
 
-Leave `localhost` URLs as-is.
+### Firewall
 
-### Option B: Caddy on Separate Server
+Ensure your Matrix server allows incoming traffic on these ports from the SWAG container/host.
 
-1. Copy template to your Caddy server:
-   ```bash
-   scp templates/Caddyfile user@caddy-server:/etc/caddy/Caddyfile
-   ```
+## Step 8: Configure Upstream OIDC (Authentik/Authelia)
 
-2. On the Caddy server, edit the file:
-   ```bash
-   nano /etc/caddy/Caddyfile
-   ```
+**Skip this step if you're NOT using an upstream provider.**
 
-3. Replace placeholders:
-   - `{{MATRIX_DOMAIN}}` → `matrix.example.com`
-   - `{{ELEMENT_DOMAIN}}` → `element.example.com`
-   - `localhost` → Your Matrix server IP (e.g., `192.168.1.100`)
-   - Update email address
+### Authentik Setup
 
-4. Update firewall on Matrix server:
-   ```bash
-   # Allow Caddy server to access Matrix services
-   sudo ufw allow from CADDY_SERVER_IP to any port 8008
-   sudo ufw allow from CADDY_SERVER_IP to any port 8080
-   sudo ufw allow from CADDY_SERVER_IP to any port 8082
-   ```
+1. Create a new **Provider** in Authentik (OAuth2/OpenID).
+2. Set the **Redirect URI** to `https://auth.example.com/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ`.
+3. Create an **Application** and bind it to the Provider.
+4. Note the **Client ID**, **Client Secret**, and **OpenID Configuration URL** (Issuer URL).
 
-**✓ Verify:** Check Caddyfile syntax:
+### Authelia Setup
 
-```bash
-# If Caddy is installed locally
-caddy validate --config caddy/Caddyfile
+1. Update your Authelia configuration to include a new OIDC client.
+2. Set `client_id` and `client_secret` (hashed).
+3. Set `redirect_uris` to `https://auth.example.com/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ`.
 
-# Or just check for placeholders
-grep "{{" caddy/Caddyfile
-```
-
-**Expected output:** No placeholders remain
-
-## Step 8: Configure Authelia OIDC (Optional)
-
-**Skip this step if you're NOT using Authelia.**
-
-### 8a. On your Authelia server, open config:
-
-```bash
-nano /etc/authelia/configuration.yml
-```
-
-### 8b. Find the `identity_providers.oidc.clients` section and add:
-
-Use the template from `templates/authelia-client.yml` as a guide.
-
-Key points:
-- `client_id`: Must match what you put in MAS config (e.g., `matrix_mas`)
-- `client_secret`: Must be hashed with pbkdf2
-- `redirect_uris`: Must be `https://matrix.example.com/oauth2/callback`
-
-### 8c. Hash your client secret:
-
-```bash
-authelia crypto hash generate pbkdf2 --password 'YOUR_CLIENT_SECRET_FROM_STEP_2E'
-```
-
-**Expected output:** A hash like `$pbkdf2-sha512$310000$...`
-
-Copy this hash into your Authelia config as `client_secret`.
-
-### 8d. Restart Authelia:
+### Restart Provider
 
 ```bash
 docker restart authelia
@@ -553,6 +544,7 @@ docker compose logs -f
 Watch for:
 - ✓ Synapse: "Synapse now listening on port 8008"
 - ✓ MAS: "Listening on 0.0.0.0:8080"
+- ✓ LiveKit: "Starting LiveKit server"
 - ✓ No database connection errors
 - ✓ No "invalid secret length" errors
 
@@ -575,6 +567,8 @@ matrix-element-admin    Up
 matrix-mas              Up (healthy)
 matrix-postgres         Up (healthy)
 matrix-synapse          Up (healthy)
+matrix-livekit          Up
+matrix-element-call     Up
 ```
 
 If any service shows "Restarting" or "Exited", check logs:
@@ -600,7 +594,7 @@ curl https://matrix.example.com/_matrix/client/versions
 
 If you get an error, check:
 - DNS is correctly configured
-- Caddy is running and proxying correctly
+- SWAG is running and proxying correctly
 - Firewall allows traffic
 
 ### 10c. Test Element Web
@@ -1227,12 +1221,11 @@ email:
 - [ ] Database password matches in all config files
 - [ ] Firewall configured (only ports 80, 443 exposed to internet)
 - [ ] Element Admin access restricted by IP
-- [ ] SSL/TLS certificates are valid (Let's Encrypt)
+- [ ] SSL/TLS certificates are valid (Let's Encrypt via SWAG)
 - [ ] Automated backups configured
 - [ ] Monitoring and alerting set up
 - [ ] Docker images regularly updated
-- [ ] Rate limiting configured in Caddy
-- [ ] If using Authelia: 2FA enabled
+- [ ] If using Authentik/Authelia: 2FA enabled
 
 ## Hardening Tips
 
@@ -1266,8 +1259,9 @@ email:
 - **Synapse:** https://element-hq.github.io/synapse/
 - **MAS:** https://element-hq.github.io/matrix-authentication-service/
 - **Element:** https://github.com/element-hq/element-web
-- **Caddy:** https://caddyserver.com/docs/
+- **Authentik:** https://goauthentik.io/docs/
 - **Authelia:** https://www.authelia.com/
+- **SWAG:** https://docs.linuxserver.io/general/swag
 
 ## Getting Help
 

@@ -24,7 +24,8 @@ services:
 
   # Synapse - Matrix Homeserver
   synapse:
-    image: matrixdotorg/synapse:latest
+    build: ./synapse
+    image: matrix-synapse-custom
     container_name: matrix-synapse
     restart: unless-stopped
     ports:
@@ -93,6 +94,33 @@ services:
     networks:
       - matrix
 
+  # LiveKit SFU for Element Call
+  livekit:
+    image: livekit/livekit:latest
+    container_name: matrix-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    networks:
+      - matrix
+
+  # Element Call web application
+  element-call:
+    image: ghcr.io/element-hq/element-call:latest
+    container_name: matrix-element-call
+    restart: unless-stopped
+    volumes:
+      - ./element-call/config/config.json:/app/config.json:ro
+    ports:
+      - "8083:80"
+    networks:
+      - matrix
+
 networks:
   matrix:
     driver: bridge
@@ -100,6 +128,6 @@ networks:
 # Notes:
 # 1. Ensure .env file is created from .env.template with all secrets
 # 2. Configure homeserver.yaml, mas config.yaml, and element config.json
-# 3. Set up reverse proxy (Caddy) to handle SSL/TLS termination
+# 3. Set up reverse proxy (e.g. SWAG) to handle SSL/TLS termination
 # 4. Consider using Docker secrets for production deployments
 # 5. Adjust port mappings if running multiple services on same host
