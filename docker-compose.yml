@@ -38,7 +38,8 @@ services:
 
   # Matrix Synapse Server
   synapse:
-    image: matrixdotorg/synapse:latest
+    build: ./synapse
+    image: matrix-synapse-custom
     container_name: matrix-synapse
     restart: unless-stopped
     environment:
@@ -198,30 +199,32 @@ services:
       redis:
         condition: service_healthy
 
-  # Caddy Reverse Proxy (HTTPS termination with Let's Encrypt)
-  # For multi-machine deployments: Don't use this profile (Caddy runs separately)
-  # For single-machine deployments: Use --profile single-machine
-  caddy:
-    profiles:
-      - single-machine  # Only started for single-machine deployments
-    image: caddy:2-alpine
-    container_name: matrix-caddy
+  # Coturn TURN/STUN server for VOIP calling
+  coturn:
+    image: coturn/coturn:latest
+    container_name: matrix-coturn
     restart: unless-stopped
     ports:
-      - "443:443"
-      - "80:80"
-      - "2019:2019"  # Admin API
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/data:/data
-      - ./caddy/config:/config
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49152-49172:49152-49172/udp" # Small range for example, in production use 49152-65535
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49152
+      - --max-port=49172
+      - --realm=${TURN_DOMAIN}
+      - --static-auth-secret=${TURN_SHARED_SECRET}
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-multicast-peers
+      - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
     networks:
       - matrix-network
-    depends_on:
-      - synapse
-      - element
-      - mas
-      # Note: Authelia dependency removed - works with or without Authelia
 
 networks:
   matrix-network:

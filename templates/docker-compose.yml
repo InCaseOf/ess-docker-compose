@@ -24,7 +24,8 @@ services:
 
   # Synapse - Matrix Homeserver
   synapse:
-    image: matrixdotorg/synapse:latest
+    build: ./synapse
+    image: matrix-synapse-custom
     container_name: matrix-synapse
     restart: unless-stopped
     ports:
@@ -93,6 +94,33 @@ services:
     networks:
       - matrix
 
+  # Coturn TURN/STUN server for VOIP calling
+  coturn:
+    image: coturn/coturn:latest
+    container_name: matrix-coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49152-49172:49152-49172/udp" # Small range for example, in production use 49152-65535
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49152
+      - --max-port=49172
+      - --realm=${TURN_DOMAIN}
+      - --static-auth-secret=${TURN_SHARED_SECRET}
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-multicast-peers
+      - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
+    networks:
+      - matrix
+
 networks:
   matrix:
     driver: bridge
@@ -100,6 +128,6 @@ networks:
 # Notes:
 # 1. Ensure .env file is created from .env.template with all secrets
 # 2. Configure homeserver.yaml, mas config.yaml, and element config.json
-# 3. Set up reverse proxy (Caddy) to handle SSL/TLS termination
+# 3. Set up reverse proxy (e.g. SWAG) to handle SSL/TLS termination
 # 4. Consider using Docker secrets for production deployments
 # 5. Adjust port mappings if running multiple services on same host

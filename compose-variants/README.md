@@ -7,7 +7,6 @@ This folder contains alternative Docker Compose configurations that are not used
 - **docker-compose.old.yml** - Original compose configuration (legacy)
 - **docker-compose.local.yml** - Local testing configuration with self-signed certificates
 - **docker-compose.authelia.yml** - Standalone Authelia service
-- **docker-compose.caddy.yml** - Standalone Caddy service
 
 ## Active Configuration
 
