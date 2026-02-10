@@ -52,7 +52,14 @@ if [[ -n "$EXISTING_DATA" ]]; then
         echo -e "  • $dir"
     done
     echo ""
-    echo -e "${YELLOW}Automatically cleaning to prevent password mismatch issues...${NC}"
+    echo -e "${RED}DANGER: Continuing will PERMANENTLY DELETE all existing data in these directories!${NC}"
+    read -p "Are you sure you want to delete all data and start fresh? [y/N]: " CONFIRM_CLEANUP
+    if [[ ! "$CONFIRM_CLEANUP" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Cleanup aborted. Please manually resolve any issues or move existing data.${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Cleaning existing data to prevent password mismatch issues...${NC}"
     echo ""
 
     if [[ -f ".env" ]]; then
@@ -123,26 +130,38 @@ read -p "Enter MAS/Auth subdomain [default: auth]: " AUTH_SUBDOMAIN
 AUTH_SUBDOMAIN=${AUTH_SUBDOMAIN:-auth}
 AUTH_DOMAIN="${AUTH_SUBDOMAIN}.${DOMAIN_BASE}"
 
+read -p "Enter Element Call subdomain [default: call]: " CALL_SUBDOMAIN
+CALL_SUBDOMAIN=${CALL_SUBDOMAIN:-call}
+ELEMENT_CALL_DOMAIN="${CALL_SUBDOMAIN}.${DOMAIN_BASE}"
+
+read -p "Enter LiveKit subdomain [default: livekit]: " LIVEKIT_SUBDOMAIN
+LIVEKIT_SUBDOMAIN=${LIVEKIT_SUBDOMAIN:-livekit}
+LIVEKIT_DOMAIN="${LIVEKIT_SUBDOMAIN}.${DOMAIN_BASE}"
+
 if [[ "$USE_OIDC" == true ]]; then
     read -p "Enter OIDC Issuer URL (e.g., https://authentik.example.com/application/o/matrix/): " OIDC_ISSUER_URL
 fi
 
 echo ""
 print_status "Configuration Summary:"
-echo -e "  Matrix:  https://${MATRIX_DOMAIN}"
-echo -e "  Element: https://${ELEMENT_DOMAIN}"
-echo -e "  MAS:     https://${AUTH_DOMAIN}"
-[[ "$USE_OIDC" == true ]] && echo -e "  OIDC:    ${OIDC_ISSUER_URL}"
+echo -e "  Matrix:       https://${MATRIX_DOMAIN}"
+echo -e "  Element:      https://${ELEMENT_DOMAIN}"
+echo -e "  MAS:          https://${AUTH_DOMAIN}"
+echo -e "  Element Call: https://${ELEMENT_CALL_DOMAIN}"
+echo -e "  LiveKit:      https://${LIVEKIT_DOMAIN}"
+[[ "$USE_OIDC" == true ]] && echo -e "  OIDC:         ${OIDC_ISSUER_URL}"
 echo ""
 
 # Step 1: Create directory structure
-mkdir -p mas/config mas/data mas/certs element/config synapse/data postgres/data bridges/{telegram,whatsapp,signal}/config
+mkdir -p mas/config mas/data mas/certs element/config element-call/config synapse/data postgres/data livekit bridges/{telegram,whatsapp,signal}/config
 
 # Step 2: Generate secrets
 POSTGRES_PASSWORD=$(generate_secret)
-TURN_SHARED_SECRET=$(openssl rand -hex 16)
 MAS_SECRET_KEY=$(generate_hex_secret)
 SYNAPSE_SHARED_SECRET=$(generate_secret)
+SYNAPSE_MAS_CLIENT_SECRET=$(generate_secret)
+LIVEKIT_API_KEY=$(openssl rand -hex 16)
+LIVEKIT_API_SECRET=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
 
 if [[ "$USE_OIDC" == true ]]; then
     if [[ -n "$PRESERVED_CLIENT_SECRET" ]]; then
@@ -158,12 +177,14 @@ cat > .env << EOF
 MATRIX_DOMAIN=${MATRIX_DOMAIN}
 ELEMENT_DOMAIN=${ELEMENT_DOMAIN}
 AUTH_DOMAIN=${AUTH_DOMAIN}
+ELEMENT_CALL_DOMAIN=${ELEMENT_CALL_DOMAIN}
+LIVEKIT_DOMAIN=${LIVEKIT_DOMAIN}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 SYNAPSE_REPORT_STATS=no
 SYNAPSE_SHARED_SECRET=${SYNAPSE_SHARED_SECRET}
-TURN_DOMAIN=${MATRIX_DOMAIN}
-TURN_SHARED_SECRET=${TURN_SHARED_SECRET}
 MAS_SECRETS_ENCRYPTION=${MAS_SECRET_KEY}
+LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 TZ=UTC
 EOF
 
@@ -176,7 +197,7 @@ EOF
 fi
 
 # Step 4: MAS Config
-openssl genrsa 4096 2>/dev/null | openssl pkcs8 -topk8 -nocrypt > mas-signing.key 2>/dev/null
+openssl ecparam -name prime256v1 -genkey -noout -out mas-signing.key 2>/dev/null
 MAS_SIGNING_KEY=$(cat mas-signing.key)
 
 cat > mas/config/config.yaml << EOF
@@ -202,7 +223,6 @@ secrets:
   encryption: '${MAS_SECRET_KEY}'
   keys:
     - kid: 'key-1'
-      algorithm: rs256
       key: |
 $(echo "$MAS_SIGNING_KEY" | sed 's/^/        /')
 matrix:
@@ -250,7 +270,7 @@ clients:
       - 'https://${ELEMENT_DOMAIN}'
   - client_id: '0000000000000000000SYNAPSE'
     client_auth_method: client_secret_basic
-    client_secret: '$(generate_secret)'
+    client_secret: '${SYNAPSE_MAS_CLIENT_SECRET}'
 EOF
 
 # Step 5: Element Config
@@ -263,7 +283,27 @@ cat > element/config/config.json << EOF
         }
     },
     "features": {
-        "feature_oidc_aware_navigation": true
+        "feature_oidc_aware_navigation": true,
+        "feature_element_call_video_rooms": true,
+        "feature_group_calls": true
+    },
+    "element_call": {
+        "url": "https://${ELEMENT_CALL_DOMAIN}"
+    }
+}
+EOF
+
+# Step 5.5: Element Call Config
+cat > element-call/config/config.json << EOF
+{
+    "default_server_config": {
+        "m.homeserver": {
+            "base_url": "https://${MATRIX_DOMAIN}",
+            "server_name": "${MATRIX_DOMAIN}"
+        }
+    },
+    "livekit": {
+        "livekit_service_url": "https://${LIVEKIT_DOMAIN}"
     }
 }
 EOF
@@ -275,7 +315,7 @@ fi
 
 sed -i '/^database:/,/^[^ ]/{ /^database:/d; /^[^ ]/!d }' synapse/data/homeserver.yaml
 sed -i '/^matrix_authentication_service:/,/^[^ ]/{ /^matrix_authentication_service:/d; /^[^ ]/!d }' synapse/data/homeserver.yaml
-sed -i '/^turn_uris:/,/^[^ ]/{ /^turn_uris:/d; /^[^ ]/!d }' synapse/data/homeserver.yaml
+sed -i '/^call_sfu:/,/^[^ ]/{ /^call_sfu:/d; /^[^ ]/!d }' synapse/data/homeserver.yaml
 
 cat >> synapse/data/homeserver.yaml << EOF
 database:
@@ -288,13 +328,34 @@ database:
     port: 5432
 matrix_authentication_service:
   enabled: true
+  issuer: "https://${AUTH_DOMAIN}/"
+  client_id: "0000000000000000000SYNAPSE"
+  client_auth_method: "client_secret_basic"
+  client_secret: "${SYNAPSE_MAS_CLIENT_SECRET}"
   endpoint: "http://mas:8080"
   secret: "${SYNAPSE_SHARED_SECRET}"
-turn_uris:
-  - "turn:${MATRIX_DOMAIN}:3478?transport=udp"
-  - "turn:${MATRIX_DOMAIN}:3478?transport=tcp"
-turn_shared_secret: "${TURN_SHARED_SECRET}"
-turn_allow_guests: true
+call_sfu:
+  enabled: true
+  url: "https://${LIVEKIT_DOMAIN}"
+  api_key: "${LIVEKIT_API_KEY}"
+  api_secret: "${LIVEKIT_API_SECRET}"
+experimental_features:
+  msc3401_enabled: true
+EOF
+
+# Step 6.5: LiveKit Config
+cat > livekit/livekit.yaml << EOF
+port: 7880
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+logging:
+  level: info
 EOF
 
 # Step 7: Start Stack
@@ -304,5 +365,5 @@ $DOCKER_COMPOSE_CMD up -d
 print_status "Matrix stack is now running!"
 
 echo -e "${MAGENTA}Next Steps:${NC}"
-echo "1. Configure your Reverse Proxy (e.g. SWAG) to point to ports 8008, 8080, 8082."
-[[ "$USE_OIDC" == true ]] && echo "2. Configure your OIDC Provider with Client Secret: ${OIDC_CLIENT_SECRET}"
+echo "1. Configure your Reverse Proxy (e.g. SWAG) to point to ports 8008, 8080, 8082, 8083, 7880, 7881."
+[[ "$USE_OIDC" == true ]] && echo "2. Configure your OIDC Provider with Client Secret: ${OIDC_CLIENT_SECRET} and Redirect URI: https://${AUTH_DOMAIN}/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ"

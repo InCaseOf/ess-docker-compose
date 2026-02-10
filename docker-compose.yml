@@ -199,30 +199,30 @@ services:
       redis:
         condition: service_healthy
 
-  # Coturn TURN/STUN server for VOIP calling
-  coturn:
-    image: coturn/coturn:latest
-    container_name: matrix-coturn
+  # LiveKit SFU for Element Call
+  livekit:
+    image: livekit/livekit:latest
+    container_name: matrix-livekit
     restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "5349:5349"
-      - "5349:5349/udp"
-      - "49152-49172:49152-49172/udp" # Small range for example, in production use 49152-65535
-    command:
-      - -n
-      - --log-file=stdout
-      - --min-port=49152
-      - --max-port=49172
-      - --realm=${TURN_DOMAIN}
-      - --static-auth-secret=${TURN_SHARED_SECRET}
-      - --fingerprint
-      - --lt-cred-mech
-      - --no-multicast-peers
-      - --no-cli
-      - --no-tlsv1
-      - --no-tlsv1_1
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    networks:
+      - matrix-network
+
+  # Element Call web application
+  element-call:
+    image: ghcr.io/element-hq/element-call:latest
+    container_name: matrix-element-call
+    restart: unless-stopped
+    volumes:
+      - ./element-call/config/config.json:/app/config.json:ro
+    ports:
+      - "8083:80"
     networks:
       - matrix-network
 

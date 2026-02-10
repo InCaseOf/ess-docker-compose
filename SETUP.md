@@ -9,7 +9,8 @@ A step-by-step guide to deploying a complete Matrix stack with checkpoints and v
 - **Element Web** - Web client
 - **Element Admin** - Admin interface
 - **PostgreSQL** - Database backend
-- **Coturn** - TURN/STUN server for calling
+- **LiveKit** - SFU for Element Call
+- **Element Call** - Video calling web app
 - **Authentik/Authelia** - Optional upstream OIDC provider
 
 ## Setup Roadmap
@@ -54,13 +55,15 @@ Before starting, ensure you have:
 - [ ] DNS configured:
   - `matrix.example.com` → Your server IP
   - `element.example.com` → Your server IP (or reverse proxy IP)
+  - `call.example.com` → Your server IP
+  - `livekit.example.com` → Your server IP
 - [ ] If using Authentik/Authelia: separate server at `auth.example.com`
 - [ ] Terminal access to your server
 
 ### Architecture Overview
 
 ```
-User → SWAG (reverse proxy) → Synapse/MAS/Element/Coturn
+User → SWAG (reverse proxy) → Synapse/MAS/Element/Element-Call/LiveKit
                                     ↓
                               PostgreSQL
                                     ↓
@@ -121,15 +124,16 @@ openssl rand -hex 32
 
 Save this as: `MAS_SECRETS_ENCRYPTION`
 
-### 2d. TURN Shared Secret
+### 2d. LiveKit Secrets
 
 ```bash
+# API Key
 openssl rand -hex 16
+# API Secret
+openssl rand -base64 32 | tr -d "=+/"
 ```
 
-**Expected output:** A 32-character hexadecimal string.
-
-Save as: `TURN_SHARED_SECRET`
+Save as: `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`.
 
 ### 2e. MAS Signing Key (MAS v1.8.0+)
 
@@ -190,7 +194,8 @@ Fill in these values (copy from your saved secrets):
 | `POSTGRES_PASSWORD` | From Step 2a | ____________ |
 | `SYNAPSE_REGISTRATION_SHARED_SECRET` | From Step 2b | ____________ |
 | `MAS_SECRETS_ENCRYPTION` | From Step 2c (64 hex) | ____________ |
-| `TURN_SHARED_SECRET` | From Step 2d | ____________ |
+| `LIVEKIT_API_KEY` | From Step 2d | ____________ |
+| `LIVEKIT_API_SECRET` | From Step 2d | ____________ |
 | `OIDC_CLIENT_SECRET` | From Step 2f (optional) | ____________ |
 
 **Note:** The MAS signing key from Step 2d is not stored in `.env` - you'll paste it directly into `mas/config/config.yaml` in Step 4.
@@ -251,9 +256,9 @@ ls -la synapse/data/homeserver.yaml
 
 **Expected output:** File exists (owned by UID 991)
 
-### 4c. Update database and TURN configuration
+### 4c. Update database and Call SFU configuration
 
-Now edit the generated config to use PostgreSQL and Coturn:
+Now edit the generated config to use PostgreSQL and LiveKit:
 
 ```bash
 nano synapse/data/homeserver.yaml
@@ -276,15 +281,17 @@ database:
 
 **⚠️ CRITICAL:** The database password here MUST exactly match what you put in `.env`!
 
-2. Find the `turn_uris:` section (or add it) and configure your TURN server:
+2. Find the `call_sfu:` section (or add it) and configure your LiveKit server:
 
 ```yaml
-turn_uris:
-  - "turn:matrix.example.com:3478?transport=udp"
-  - "turn:matrix.example.com:3478?transport=tcp"
-turn_shared_secret: "YOUR_TURN_SHARED_SECRET_FROM_STEP_2d"
-turn_user_lifetime: 86400000
-turn_allow_guests: true
+call_sfu:
+  enabled: true
+  url: "https://livekit.example.com"
+  api_key: "YOUR_LIVEKIT_API_KEY"
+  api_secret: "YOUR_LIVEKIT_API_SECRET"
+
+experimental_features:
+  msc3401_enabled: true
 ```
 
 Save and exit (`Ctrl+X`, then `Y`, then `Enter` in nano).
@@ -401,12 +408,14 @@ Since you are using SWAG in a separate docker-compose, you need to point it to y
 
 ### SWAG Configuration
 
-1. In your SWAG `proxy-confs` directory, create or edit `matrix.subdomain.conf` and `element.subdomain.conf`.
+1. In your SWAG `proxy-confs` directory, create or edit `matrix.subdomain.conf`, `element.subdomain.conf`, `call.subdomain.conf`, and `livekit.subdomain.conf`.
 2. Point them to your Matrix server's IP and the following ports:
    - **Synapse:** 8008
    - **MAS:** 8080
    - **Element Web:** 8082
    - **Element Admin:** 8081
+   - **Element Call:** 8083
+   - **LiveKit:** 7880
 
 ### Firewall
 
@@ -419,7 +428,7 @@ Ensure your Matrix server allows incoming traffic on these ports from the SWAG c
 ### Authentik Setup
 
 1. Create a new **Provider** in Authentik (OAuth2/OpenID).
-2. Set the **Redirect URI** to `https://matrix.example.com/oauth2/callback`.
+2. Set the **Redirect URI** to `https://auth.example.com/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ`.
 3. Create an **Application** and bind it to the Provider.
 4. Note the **Client ID**, **Client Secret**, and **OpenID Configuration URL** (Issuer URL).
 
@@ -427,7 +436,7 @@ Ensure your Matrix server allows incoming traffic on these ports from the SWAG c
 
 1. Update your Authelia configuration to include a new OIDC client.
 2. Set `client_id` and `client_secret` (hashed).
-3. Set `redirect_uris` to `https://matrix.example.com/oauth2/callback`.
+3. Set `redirect_uris` to `https://auth.example.com/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ`.
 
 ### Restart Provider
 
@@ -535,7 +544,7 @@ docker compose logs -f
 Watch for:
 - ✓ Synapse: "Synapse now listening on port 8008"
 - ✓ MAS: "Listening on 0.0.0.0:8080"
-- ✓ Coturn: "RFC 5766/5389/5928/6062/6156 STUN/TURN Server"
+- ✓ LiveKit: "Starting LiveKit server"
 - ✓ No database connection errors
 - ✓ No "invalid secret length" errors
 
@@ -558,7 +567,8 @@ matrix-element-admin    Up
 matrix-mas              Up (healthy)
 matrix-postgres         Up (healthy)
 matrix-synapse          Up (healthy)
-matrix-coturn           Up
+matrix-livekit          Up
+matrix-element-call     Up
 ```
 
 If any service shows "Restarting" or "Exited", check logs:

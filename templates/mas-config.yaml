@@ -176,7 +176,7 @@ account:
 # 4. If using upstream OAuth (Authentik/Authelia):
 #    - Uncomment the entire upstream_oauth2 section
 #    - Replace all {{OIDC_*}} placeholders
-#    - Ensure redirect URI in your provider is: https://{{MATRIX_DOMAIN}}/oauth2/callback
+#    - Ensure redirect URI in your provider is: https://{{AUTH_DOMAIN}}/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ
 #    - Client secret in Authentik/Authelia should be the plaintext version of the secret
 #
 # 5. The provider ID in upstream_oauth2 can be any unique string
