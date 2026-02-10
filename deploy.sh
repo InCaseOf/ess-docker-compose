@@ -158,6 +158,7 @@ mkdir -p mas/config mas/data mas/certs element/config element-call/config synaps
 # Step 2: Generate secrets
 POSTGRES_PASSWORD=$(generate_secret)
 MAS_SECRET_KEY=$(generate_hex_secret)
+SYNCV3_SECRET=$(generate_hex_secret)
 SYNAPSE_SHARED_SECRET=$(generate_secret)
 SYNAPSE_MAS_CLIENT_SECRET=$(generate_secret)
 LIVEKIT_API_KEY=$(openssl rand -hex 16)
@@ -183,6 +184,7 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 SYNAPSE_REPORT_STATS=no
 SYNAPSE_SHARED_SECRET=${SYNAPSE_SHARED_SECRET}
 MAS_SECRETS_ENCRYPTION=${MAS_SECRET_KEY}
+SYNCV3_SECRET=${SYNCV3_SECRET}
 LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
 LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 TZ=UTC
@@ -365,5 +367,5 @@ $DOCKER_COMPOSE_CMD up -d
 print_status "Matrix stack is now running!"
 
 echo -e "${MAGENTA}Next Steps:${NC}"
-echo "1. Configure your Reverse Proxy (e.g. SWAG) to point to ports 8008, 8080, 8082, 8083, 7880, 7881."
+echo "1. Configure your Reverse Proxy (e.g. SWAG) to point to ports 8008, 8080, 8082, 8083, 8009 (Sliding Sync), 7880, 7881."
 [[ "$USE_OIDC" == true ]] && echo "2. Configure your OIDC Provider with Client Secret: ${OIDC_CLIENT_SECRET} and Redirect URI: https://${AUTH_DOMAIN}/upstream/callback/01HQW90Z35CMXFJWQPHC3BGZGQ"

@@ -11,14 +11,17 @@ A complete, production-ready Matrix server stack with modern authentication and 
 - **PostgreSQL** - Database backend
 - **LiveKit** - SFU for Element Call
 - **Element Call** - Next-generation video calling
+- **Sliding Sync Proxy** - Blazing fast performance
+- **Discord Bridge** - Connect your Discord servers
 
 ## Features
 
-- Clean template-based configuration
-- Upstream OIDC integration (Authentik, Authelia, etc.)
-- Custom Synapse plugins support via Dockerfile
-- Native Element Call support (group video calls)
-- Separate or combined deployment options
+- **Discord-like Experience:** Group video calls, voice channels, and high performance.
+- **Fast Performance:** Integrated Sliding Sync proxy for snappy mobile and web apps.
+- **Upstream OIDC:** Seamless integration with Authentik, Authelia, or any OIDC provider.
+- **Extensible:** Support for arbitrary Synapse plugins via custom Dockerfile.
+- **Multi-protocol:** Bridges for Discord, Telegram, WhatsApp, and Signal.
+- **Rich Content:** URL previews and custom emojis enabled by default.
 - Comprehensive documentation
 - Production-ready security defaults
 
@@ -110,7 +113,7 @@ See [SETUP.md](SETUP.md) Step 7 for details.
 
 - Docker and Docker Compose
 - Domain name with DNS configured
-- [ ] Ports 80, 443, 7880, 7881, 7882 accessible
+- [ ] Ports 80, 443, 8009 (Sliding Sync), 7880, 7881, 7882 accessible
 
 ## Common Operations
 

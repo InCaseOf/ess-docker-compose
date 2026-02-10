@@ -121,6 +121,36 @@ services:
     networks:
       - matrix
 
+  # mautrix-discord Bridge
+  mautrix-discord:
+    image: dock.mau.dev/mautrix/discord:latest
+    container_name: matrix-bridge-discord
+    restart: unless-stopped
+    volumes:
+      - ./bridges/discord/config:/data
+    networks:
+      - matrix
+    depends_on:
+      - synapse
+
+  # Sliding Sync Proxy for faster Element performance
+  sliding-sync:
+    image: ghcr.io/matrix-org/sliding-sync:latest
+    container_name: matrix-sliding-sync
+    restart: unless-stopped
+    environment:
+      - SYNCV3_SERVER=http://synapse:8008
+      - SYNCV3_DB=postgresql://synapse:{{POSTGRES_PASSWORD}}@postgres:5432/syncv3?sslmode=disable
+      - SYNCV3_SECRET={{SYNCV3_SECRET}}
+      - SYNCV3_BINDADDR=0.0.0.0:8009
+    ports:
+      - "8009:8009"
+    networks:
+      - matrix
+    depends_on:
+      - postgres
+      - synapse
+
 networks:
   matrix:
     driver: bridge

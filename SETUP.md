@@ -11,6 +11,8 @@ A step-by-step guide to deploying a complete Matrix stack with checkpoints and v
 - **PostgreSQL** - Database backend
 - **LiveKit** - SFU for Element Call
 - **Element Call** - Video calling web app
+- **Sliding Sync Proxy** - High performance proxy
+- **Bridges** - Discord, Telegram, WhatsApp, Signal support
 - **Authentik/Authelia** - Optional upstream OIDC provider
 
 ## Setup Roadmap
@@ -23,9 +25,9 @@ Phase 1: Preparation
 
 Phase 2: Configuration
 ├─ Environment variables
-├─ Synapse config (and Plugins)
+├─ Synapse config (Plugins, URL Previews, LiveKit)
 ├─ MAS config (Authentik/Authelia)
-├─ Element config
+├─ Element config (Metaspaces, Voice Channels)
 └─ ✓ Checkpoint: All configs prepared
 
 Phase 3: External Reverse Proxy
@@ -63,7 +65,7 @@ Before starting, ensure you have:
 ### Architecture Overview
 
 ```
-User → SWAG (reverse proxy) → Synapse/MAS/Element/Element-Call/LiveKit
+User → SWAG (reverse proxy) → Synapse/MAS/Element/Call/LiveKit/Sliding-Sync
                                     ↓
                               PostgreSQL
                                     ↓
@@ -124,7 +126,15 @@ openssl rand -hex 32
 
 Save this as: `MAS_SECRETS_ENCRYPTION`
 
-### 2d. LiveKit Secrets
+### 2d. Sliding Sync Secret
+
+```bash
+openssl rand -hex 32
+```
+
+Save as: `SYNCV3_SECRET`
+
+### 2e. LiveKit Secrets
 
 ```bash
 # API Key
@@ -194,8 +204,9 @@ Fill in these values (copy from your saved secrets):
 | `POSTGRES_PASSWORD` | From Step 2a | ____________ |
 | `SYNAPSE_REGISTRATION_SHARED_SECRET` | From Step 2b | ____________ |
 | `MAS_SECRETS_ENCRYPTION` | From Step 2c (64 hex) | ____________ |
-| `LIVEKIT_API_KEY` | From Step 2d | ____________ |
-| `LIVEKIT_API_SECRET` | From Step 2d | ____________ |
+| `SYNCV3_SECRET` | From Step 2d (64 hex) | ____________ |
+| `LIVEKIT_API_KEY` | From Step 2e | ____________ |
+| `LIVEKIT_API_SECRET` | From Step 2e | ____________ |
 | `OIDC_CLIENT_SECRET` | From Step 2f (optional) | ____________ |
 
 **Note:** The MAS signing key from Step 2d is not stored in `.env` - you'll paste it directly into `mas/config/config.yaml` in Step 4.
@@ -416,6 +427,7 @@ Since you are using SWAG in a separate docker-compose, you need to point it to y
    - **Element Admin:** 8081
    - **Element Call:** 8083
    - **LiveKit:** 7880
+- **Sliding Sync:** 8009
 
 ### Firewall
 
@@ -545,6 +557,7 @@ Watch for:
 - ✓ Synapse: "Synapse now listening on port 8008"
 - ✓ MAS: "Listening on 0.0.0.0:8080"
 - ✓ LiveKit: "Starting LiveKit server"
+- ✓ Sliding Sync: "Listening on :8009"
 - ✓ No database connection errors
 - ✓ No "invalid secret length" errors
 
@@ -569,6 +582,7 @@ matrix-postgres         Up (healthy)
 matrix-synapse          Up (healthy)
 matrix-livekit          Up
 matrix-element-call     Up
+matrix-sliding-sync     Up
 ```
 
 If any service shows "Restarting" or "Exited", check logs:

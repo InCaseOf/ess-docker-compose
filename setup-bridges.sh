@@ -37,15 +37,16 @@ chmod 644 appservices/doublepuppet.yaml
 echo "✓ Double puppet appservice created"
 
 # Stop bridges
-docker compose stop mautrix-telegram mautrix-whatsapp mautrix-signal 2>/dev/null || true
+docker compose stop mautrix-telegram mautrix-whatsapp mautrix-signal mautrix-discord 2>/dev/null || true
 
 # Clean old configs
-sudo rm -rf bridges/telegram/config/* bridges/whatsapp/config/* bridges/signal/config/*
+sudo rm -rf bridges/telegram/config/* bridges/whatsapp/config/* bridges/signal/config/* bridges/discord/config/*
 
 # Generate configs by starting briefly
 docker compose up -d mautrix-telegram && sleep 15 && docker compose stop mautrix-telegram
 docker compose up -d mautrix-whatsapp && sleep 15 && docker compose stop mautrix-whatsapp
 docker compose up -d mautrix-signal && sleep 15 && docker compose stop mautrix-signal
+docker compose up -d mautrix-discord && sleep 15 && docker compose stop mautrix-discord
 
 # Configure Telegram
 echo "Configuring Telegram bridge..."
@@ -132,10 +133,39 @@ fi
 
 echo "✓ Signal configured with double puppet and encryption disabled"
 
+# Configure Discord
+echo "Configuring Discord bridge..."
+DOMAIN_LINE=$(sudo grep -n "^  domain:" bridges/discord/config/config.yaml | cut -d: -f1)
+[ -n "$DOMAIN_LINE" ] && sudo sed -i "${DOMAIN_LINE}s|.*|  domain: ${MATRIX_DOMAIN}|" bridges/discord/config/config.yaml
+sudo sed -i "s|address: http://localhost:29319|address: http://mautrix-discord:29319|" bridges/discord/config/config.yaml
+sudo sed -i "s|uri: postgres://user:password@host/database?sslmode=disable|uri: postgres://synapse:${POSTGRES_PASSWORD}@postgres/discord?sslmode=disable|" bridges/discord/config/config.yaml
+sudo sed -i "/\"@admin:example.com\": admin/d" bridges/discord/config/config.yaml
+sudo sed -i "/permissions:/a\\        \"${MATRIX_DOMAIN}\": admin" bridges/discord/config/config.yaml
+
+# Add double puppet configuration for Discord
+if ! sudo grep -q "double_puppet:" bridges/discord/config/config.yaml; then
+    sudo sed -i "/permissions:/i\\  double_puppet:\n    secrets:\n      ${MATRIX_DOMAIN}: as_token:${DOUBLEPUPPET_AS_TOKEN}" bridges/discord/config/config.yaml
+fi
+
+# Disable encryption for Discord (not compatible with MAS)
+if sudo grep -q "encryption:" bridges/discord/config/config.yaml; then
+    sudo sed -i "/encryption:/,/allow_key_sharing:/ { s|allow:.*|allow: false|; s|default:.*|default: false|; s|msc4190:.*|msc4190: false|; s|self_sign:.*|self_sign: false|; s|allow_key_sharing:.*|allow_key_sharing: true| }" bridges/discord/config/config.yaml
+else
+    echo "    encryption:" | sudo tee -a bridges/discord/config/config.yaml > /dev/null
+    echo "        allow: false" | sudo tee -a bridges/discord/config/config.yaml > /dev/null
+    echo "        default: false" | sudo tee -a bridges/discord/config/config.yaml > /dev/null
+    echo "        msc4190: false" | sudo tee -a bridges/discord/config/config.yaml > /dev/null
+    echo "        self_sign: false" | sudo tee -a bridges/discord/config/config.yaml > /dev/null
+    echo "        allow_key_sharing: true" | sudo tee -a bridges/discord/config/config.yaml > /dev/null
+fi
+
+echo "✓ Discord configured with double puppet and encryption disabled"
+
 # Create databases
 docker exec matrix-postgres psql -U synapse -tc "SELECT 1 FROM pg_database WHERE datname = 'telegram'" | grep -q 1 || docker exec matrix-postgres psql -U synapse -c "CREATE DATABASE telegram;"
 docker exec matrix-postgres psql -U synapse -tc "SELECT 1 FROM pg_database WHERE datname = 'whatsapp'" | grep -q 1 || docker exec matrix-postgres psql -U synapse -c "CREATE DATABASE whatsapp;"
 docker exec matrix-postgres psql -U synapse -tc "SELECT 1 FROM pg_database WHERE datname = 'signal'" | grep -q 1 || docker exec matrix-postgres psql -U synapse -c "CREATE DATABASE signal;"
+docker exec matrix-postgres psql -U synapse -tc "SELECT 1 FROM pg_database WHERE datname = 'discord'" | grep -q 1 || docker exec matrix-postgres psql -U synapse -c "CREATE DATABASE discord;"
 
 # Add registrations to Synapse (including double puppet)
 echo "Registering appservices with Synapse..."
@@ -151,6 +181,7 @@ sudo sed -i '/^  - \/appservices\//d' synapse/data/homeserver.yaml
 echo "  - /appservices/doublepuppet.yaml" | sudo tee -a synapse/data/homeserver.yaml > /dev/null
 echo "  - /bridges/whatsapp/config/registration.yaml" | sudo tee -a synapse/data/homeserver.yaml > /dev/null
 echo "  - /bridges/signal/config/registration.yaml" | sudo tee -a synapse/data/homeserver.yaml > /dev/null
+echo "  - /bridges/discord/config/registration.yaml" | sudo tee -a synapse/data/homeserver.yaml > /dev/null
 
 echo "✓ Appservice registrations added to homeserver.yaml"
 
@@ -159,7 +190,7 @@ docker compose restart synapse && sleep 10
 
 # Start bridges
 echo "Starting bridges..."
-docker compose up -d mautrix-telegram mautrix-whatsapp mautrix-signal
+docker compose up -d mautrix-telegram mautrix-whatsapp mautrix-signal mautrix-discord
 sleep 15
 
 echo ""

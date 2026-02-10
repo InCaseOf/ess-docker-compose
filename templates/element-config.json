@@ -46,7 +46,10 @@
     "feature_html_topic": true,
     "feature_thread": true,
     "feature_element_call_video_rooms": true,
-    "feature_group_calls": true
+    "feature_group_calls": true,
+    "feature_room_backups_v2": true,
+    "feature_spaces_metaspaces": true,
+    "feature_state_counters": true
   },
   "element_call": {
     "url": "https://{{ELEMENT_CALL_DOMAIN}}"

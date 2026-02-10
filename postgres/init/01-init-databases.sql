@@ -5,8 +5,12 @@
 -- Create database for Matrix Authentication Service (MAS)
 CREATE DATABASE mas;
 
+-- Create database for Sliding Sync Proxy
+CREATE DATABASE syncv3;
+
 -- Grant privileges to the synapse user for all databases
 GRANT ALL PRIVILEGES ON DATABASE mas TO synapse;
+GRANT ALL PRIVILEGES ON DATABASE syncv3 TO synapse;
 
 -- Display confirmation
-\echo 'Additional databases created: mas'
+\echo 'Additional databases created: mas, syncv3'
